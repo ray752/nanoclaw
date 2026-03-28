@@ -22,20 +22,29 @@ import { fileURLToPath } from 'url';
 
 /**
  * Resolve the path to the Claude Code CLI executable.
- * Checks local node_modules first (most reliable in containers),
- * then global install locations, then falls back to `which claude`.
+ * The SDK spawns this as a subprocess, so it must be a proper executable
+ * (the `claude` binary with shebang), NOT the raw cli.js module.
+ * Priority: global binary > local .bin symlink > which > cli.js fallback.
  */
 function resolveClaudeCodePath(): string | undefined {
   const __dir = path.dirname(fileURLToPath(import.meta.url));
   const agentRunnerRoot = path.resolve(__dir, '..');
 
+  // 1. Try `which claude` first — most reliable, respects PATH
+  try {
+    const whichPath = execSync('which claude', { encoding: 'utf-8' }).trim();
+    if (whichPath && fs.existsSync(whichPath)) {
+      log(`Found Claude Code CLI via which: ${whichPath}`);
+      return whichPath;
+    }
+  } catch { /* ignore */ }
+
+  // 2. Check well-known binary locations
   const candidates = [
-    // Local node_modules (installed as dependency of agent-runner)
-    path.join(agentRunnerRoot, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+    // Global binary (created by npm install -g)
+    '/usr/local/bin/claude',
+    // Local .bin symlink (created by npm install in agent-runner)
     path.join(agentRunnerRoot, 'node_modules', '.bin', 'claude'),
-    // Global npm install locations
-    '/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js',
-    '/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js',
   ];
 
   for (const candidate of candidates) {
@@ -45,26 +54,8 @@ function resolveClaudeCodePath(): string | undefined {
     }
   }
 
-  // Try npm prefix
-  try {
-    const prefix = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
-    const npmPath = path.join(prefix, 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-    if (fs.existsSync(npmPath)) {
-      log(`Found Claude Code CLI via npm prefix at: ${npmPath}`);
-      return npmPath;
-    }
-  } catch { /* ignore */ }
-
-  // Try which
-  try {
-    const whichPath = execSync('which claude', { encoding: 'utf-8' }).trim();
-    if (whichPath && fs.existsSync(whichPath)) {
-      log(`Found Claude Code CLI via which at: ${whichPath}`);
-      return whichPath;
-    }
-  } catch { /* ignore */ }
-
-  log('WARNING: Could not find Claude Code CLI in any known location');
+  // 3. Fallback: undefined lets the SDK try its own resolution
+  log('WARNING: Could not find Claude Code CLI binary in any known location');
   return undefined;
 }
 
