@@ -20,6 +20,54 @@ import { execFile, execSync } from 'child_process';
 import { query, HookCallback, PreCompactHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
 
+/**
+ * Resolve the path to the Claude Code CLI executable.
+ * Checks local node_modules first (most reliable in containers),
+ * then global install locations, then falls back to `which claude`.
+ */
+function resolveClaudeCodePath(): string | undefined {
+  const __dir = path.dirname(fileURLToPath(import.meta.url));
+  const agentRunnerRoot = path.resolve(__dir, '..');
+
+  const candidates = [
+    // Local node_modules (installed as dependency of agent-runner)
+    path.join(agentRunnerRoot, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+    path.join(agentRunnerRoot, 'node_modules', '.bin', 'claude'),
+    // Global npm install locations
+    '/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js',
+    '/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js',
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      log(`Found Claude Code CLI at: ${candidate}`);
+      return candidate;
+    }
+  }
+
+  // Try npm prefix
+  try {
+    const prefix = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
+    const npmPath = path.join(prefix, 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+    if (fs.existsSync(npmPath)) {
+      log(`Found Claude Code CLI via npm prefix at: ${npmPath}`);
+      return npmPath;
+    }
+  } catch { /* ignore */ }
+
+  // Try which
+  try {
+    const whichPath = execSync('which claude', { encoding: 'utf-8' }).trim();
+    if (whichPath && fs.existsSync(whichPath)) {
+      log(`Found Claude Code CLI via which at: ${whichPath}`);
+      return whichPath;
+    }
+  } catch { /* ignore */ }
+
+  log('WARNING: Could not find Claude Code CLI in any known location');
+  return undefined;
+}
+
 interface ContainerInput {
   prompt: string;
   sessionId?: string;
@@ -59,34 +107,6 @@ interface SDKUserMessage {
 const IPC_INPUT_DIR = '/workspace/ipc/input';
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
-
-/**
- * Resolve the path to the Claude Code CLI executable.
- * Checks common locations for globally-installed claude-code.
- */
-function resolveClaudeCodePath(): string | undefined {
-  // Check known global npm install paths
-  const candidates = [
-    '/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js',
-    '/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js',
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  // Try to resolve via npm prefix
-  try {
-    const prefix = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
-    const npmPath = path.join(prefix, 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-    if (fs.existsSync(npmPath)) {
-      return npmPath;
-    }
-  } catch { /* ignore */ }
-
-  return undefined;
-}
 
 /**
  * Push-based async iterable for streaming user messages to the SDK.
@@ -365,7 +385,6 @@ async function runQuery(
   mcpServerPath: string,
   containerInput: ContainerInput,
   sdkEnv: Record<string, string | undefined>,
-  claudeCodePath: string | undefined,
   resumeAt?: string,
 ): Promise<{ newSessionId?: string; lastAssistantUuid?: string; closedDuringQuery: boolean }> {
   const stream = new MessageStream();
@@ -420,11 +439,14 @@ async function runQuery(
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
 
+  // Resolve Claude Code CLI path before starting query
+  const claudeCodePath = resolveClaudeCodePath();
+
   for await (const message of query({
     prompt: stream,
     options: {
-      pathToClaudeCodeExecutable: claudeCodePath,
       cwd: '/workspace/group',
+      pathToClaudeCodeExecutable: claudeCodePath,
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
       resumeSessionAt: resumeAt,
@@ -562,14 +584,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Resolve Claude Code CLI path (installed globally via Dockerfile)
-  const claudeCodePath = resolveClaudeCodePath();
-  if (claudeCodePath) {
-    log(`Claude Code CLI found at: ${claudeCodePath}`);
-  } else {
-    log('WARNING: Claude Code CLI not found in global paths, SDK will use default resolution');
-  }
-
   // Credentials are injected by the host's credential proxy via ANTHROPIC_BASE_URL.
   // No real secrets exist in the container environment.
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
@@ -620,7 +634,7 @@ async function main(): Promise<void> {
     while (true) {
       log(`Starting query (session: ${sessionId || 'new'}, resumeAt: ${resumeAt || 'latest'})...`);
 
-      const queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, claudeCodePath, resumeAt);
+      const queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, resumeAt);
       if (queryResult.newSessionId) {
         sessionId = queryResult.newSessionId;
       }
