@@ -202,7 +202,8 @@ export function getAvailableGroups(): import('./container-runner.js').AvailableG
 
   return chats
     .filter((c) => c.jid !== '__group_sync__' && c.is_group)
-    .map((c) => ({\n      jid: c.jid,
+    .map((c) => ({
+      jid: c.jid,
       name: c.name,
       lastActivity: c.last_message_time,
       isRegistered: registeredJids.has(c.jid),
