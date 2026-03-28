@@ -19,7 +19,6 @@ import {
 import {
   ContainerInput,
   ContainerOutput,
-  readSecrets,
 } from './container-runner.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
@@ -181,15 +180,9 @@ export async function runRailwayAgent(
     let stdoutTruncated = false;
     let stderrTruncated = false;
 
-    // Pass secrets via stdin (never exposed as env vars)
-    input.secrets = readSecrets();
-    (input as unknown as Record<string, unknown>).secretKeyNames = Object.keys(
-      input.secrets,
-    );
+    // Pass input via stdin (secrets are handled by OneCLI gateway, never exposed)
     child.stdin.write(JSON.stringify(input));
     child.stdin.end();
-    delete input.secrets;
-    delete (input as unknown as Record<string, unknown>).secretKeyNames;
 
     // Streaming output parsing (same protocol as container-runner)
     let parseBuffer = '';
