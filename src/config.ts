@@ -24,6 +24,9 @@ export const SCHEDULER_POLL_INTERVAL = 60000;
 const PROJECT_ROOT = process.cwd();
 const HOME_DIR = process.env.HOME || os.homedir();
 
+// Railway deployment detection
+export const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT;
+
 // Mount security: allowlist stored OUTSIDE project root, never mounted into containers
 export const MOUNT_ALLOWLIST_PATH = path.join(
   HOME_DIR,

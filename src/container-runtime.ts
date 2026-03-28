@@ -5,6 +5,7 @@
 import { execSync } from 'child_process';
 import os from 'os';
 
+import { IS_RAILWAY } from './config.js';
 import { logger } from './logger.js';
 
 /** The container runtime binary name. */
@@ -37,6 +38,10 @@ export function stopContainer(name: string): void {
 
 /** Ensure the container runtime is running, starting it if needed. */
 export function ensureContainerRuntimeRunning(): void {
+  if (IS_RAILWAY) {
+    logger.info('Railway mode: skipping container runtime check');
+    return;
+  }
   try {
     execSync(`${CONTAINER_RUNTIME_BIN} info`, {
       stdio: 'pipe',
@@ -77,6 +82,7 @@ export function ensureContainerRuntimeRunning(): void {
 
 /** Kill orphaned NanoClaw containers from previous runs. */
 export function cleanupOrphans(): void {
+  if (IS_RAILWAY) return;
   try {
     const output = execSync(
       `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw- --format '{{.Names}}'`,

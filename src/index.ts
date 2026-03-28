@@ -9,6 +9,7 @@ import {
   getTriggerPattern,
   GROUPS_DIR,
   IDLE_TIMEOUT,
+  IS_RAILWAY,
   MAX_MESSAGES_PER_PROMPT,
   ONECLI_URL,
   POLL_INTERVAL,
@@ -63,6 +64,7 @@ import {
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { runRailwayAgent } from './railway-runner.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -381,20 +383,36 @@ async function runAgent(
     : undefined;
 
   try {
-    const output = await runContainerAgent(
-      group,
-      {
-        prompt,
-        sessionId,
-        groupFolder: group.folder,
-        chatJid,
-        isMain,
-        assistantName: ASSISTANT_NAME,
-      },
-      (proc, containerName) =>
-        queue.registerProcess(chatJid, proc, containerName, group.folder),
-      wrappedOnOutput,
-    );
+    // Route to Railway runner or container runner based on deployment mode
+    const output = IS_RAILWAY
+      ? await runRailwayAgent(
+          group,
+          {
+            prompt,
+            sessionId,
+            groupFolder: group.folder,
+            chatJid,
+            isMain,
+            assistantName: ASSISTANT_NAME,
+          },
+          (proc, containerName) =>
+            queue.registerProcess(chatJid, proc, containerName, group.folder),
+          wrappedOnOutput,
+        )
+      : await runContainerAgent(
+          group,
+          {
+            prompt,
+            sessionId,
+            groupFolder: group.folder,
+            chatJid,
+            isMain,
+            assistantName: ASSISTANT_NAME,
+          },
+          (proc, containerName) =>
+            queue.registerProcess(chatJid, proc, containerName, group.folder),
+          wrappedOnOutput,
+        );
 
     if (output.newSessionId) {
       sessions[group.folder] = output.newSessionId;
