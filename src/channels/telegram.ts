@@ -199,9 +199,12 @@ export class TelegramChannel implements Channel {
       logger.error({ err: err.message }, 'Telegram bot error');
     });
 
-    // Start polling — returns a Promise that resolves when started
+    // Start polling — returns a Promise that resolves when started.
+    // drop_pending_updates avoids 409 Conflict during Railway deployment rollover
+    // (old and new instances both calling getUpdates simultaneously).
     return new Promise<void>((resolve) => {
       this.bot!.start({
+        drop_pending_updates: true,
         onStart: (botInfo) => {
           logger.info(
             { username: botInfo.username, id: botInfo.id },

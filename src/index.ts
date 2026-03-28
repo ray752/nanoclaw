@@ -568,6 +568,12 @@ function ensureContainerSystemRunning(): void {
 }
 
 async function main(): Promise<void> {
+  // Prevent unhandled rejections from crashing the process
+  // (e.g., Telegram Grammy 409 conflict during Railway deployment rollover)
+  process.on('unhandledRejection', (err) => {
+    logger.error({ err }, 'Unhandled rejection (suppressed to prevent crash)');
+  });
+
   ensureContainerSystemRunning();
   initDatabase();
   logger.info('Database initialized');
@@ -643,6 +649,25 @@ async function main(): Promise<void> {
           logger.error({ err, chatJid }, 'Remote control command error'),
         );
         return;
+      }
+
+      // Auto-register Telegram DM/group chats on first message.
+      // This ensures Telegram works even when Slack is the main group
+      // (the env-var auto-registration only fires for one channel).
+      if (chatJid.startsWith('tg:') && !registeredGroups[chatJid]) {
+        const senderName = msg.sender_name || 'Telegram Chat';
+        const chatId = chatJid.replace('tg:', '').replace('-', 'n');
+        registerGroup(chatJid, {
+          name: senderName,
+          folder: `tg_${chatId}`,
+          trigger: `@${ASSISTANT_NAME}`,
+          added_at: new Date().toISOString(),
+          requiresTrigger: false,
+        });
+        logger.info(
+          { chatJid, sender: msg.sender_name },
+          'Auto-registered Telegram chat on first message',
+        );
       }
 
       // Sender allowlist drop mode: discard messages from denied senders before storing
