@@ -117,17 +117,9 @@ export class TelegramChannel implements Channel {
         isGroup,
       );
 
-      // Only deliver full message for registered groups
-      const group = this.opts.registeredGroups()[chatJid];
-      if (!group) {
-        logger.debug(
-          { chatJid, chatName },
-          'Message from unregistered Telegram chat',
-        );
-        return;
-      }
-
-      // Deliver message — startMessageLoop() will pick it up
+      // Deliver message to onMessage — it handles auto-registration for
+      // unregistered Telegram chats (DMs, new groups) and then stores the
+      // message so startMessageLoop() will pick it up.
       this.opts.onMessage(chatJid, {
         id: msgId,
         chat_jid: chatJid,
@@ -141,15 +133,13 @@ export class TelegramChannel implements Channel {
 
       logger.info(
         { chatJid, chatName, sender: senderName },
-        'Telegram message stored',
+        'Telegram message delivered',
       );
     });
 
     // Handle non-text messages with placeholders so the agent knows something was sent
     const storeNonText = (ctx: any, placeholder: string) => {
       const chatJid = `tg:${ctx.chat.id}`;
-      const group = this.opts.registeredGroups()[chatJid];
-      if (!group) return;
 
       const timestamp = new Date(ctx.message.date * 1000).toISOString();
       const senderName =
