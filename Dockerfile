@@ -1,5 +1,6 @@
 FROM node:22
 WORKDIR /app
+RUN npm install -g @anthropic-ai/claude-code
 COPY package.json ./
 RUN npm install
 COPY . .
