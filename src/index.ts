@@ -13,6 +13,9 @@ import {
   MAX_MESSAGES_PER_PROMPT,
   ONECLI_URL,
   POLL_INTERVAL,
+  SLACK_BOT_TOKEN,
+  SLACK_MAIN_CHANNEL_ID,
+  TELEGRAM_BOT_TOKEN,
   TIMEZONE,
 } from './config.js';
 import './channels/index.js';
@@ -199,8 +202,7 @@ export function getAvailableGroups(): import('./container-runner.js').AvailableG
 
   return chats
     .filter((c) => c.jid !== '__group_sync__' && c.is_group)
-    .map((c) => ({
-      jid: c.jid,
+    .map((c) => ({\n      jid: c.jid,
       name: c.name,
       lastActivity: c.last_message_time,
       isRegistered: registeredJids.has(c.jid),
@@ -689,6 +691,77 @@ async function main(): Promise<void> {
   if (channels.length === 0) {
     logger.fatal('No channels connected');
     process.exit(1);
+  }
+
+  // Auto-register default channels from environment variables (Railway zero-config deploy).
+  // Only auto-register on first startup when no groups are registered yet.
+  if (Object.keys(registeredGroups).length === 0) {
+    // If SLACK_MAIN_CHANNEL_ID is set and SLACK_BOT_TOKEN is configured,
+    // auto-register a Slack channel as the main group.
+    if (SLACK_MAIN_CHANNEL_ID && SLACK_BOT_TOKEN) {
+      const slackJid = `slack:${SLACK_MAIN_CHANNEL_ID}`;
+      registerGroup(slackJid, {
+        name: `${ASSISTANT_NAME} (Slack)`,
+        folder: 'main',
+        trigger: `@${ASSISTANT_NAME}`,
+        added_at: new Date().toISOString(),
+        isMain: true,
+        requiresTrigger: false,
+      });
+      logger.info(
+        { channelId: SLACK_MAIN_CHANNEL_ID },
+        'Auto-registered Slack main group from SLACK_MAIN_CHANNEL_ID',
+      );
+    }
+
+    // If TELEGRAM_BOT_TOKEN is set, auto-register a default Telegram group.
+    if (TELEGRAM_BOT_TOKEN && !SLACK_MAIN_CHANNEL_ID) {
+      // Sync groups first to get Telegram chat metadata
+      const telegramChannel = channels.find((ch) => ch.name === 'telegram');
+      if (telegramChannel?.syncGroups) {
+        await telegramChannel.syncGroups(true);
+        const allChats = getAllChats();
+        const telegramGroups = allChats.filter(
+          (c) =>
+            c.jid?.startsWith('tg:') &&
+            c.is_group === 1 &&
+            !registeredGroups[c.jid],
+        );
+
+        if (telegramGroups.length > 0) {
+          // Register the first Telegram group (most recent) as main
+          const mainGroup = telegramGroups[0];
+          registerGroup(mainGroup.jid, {
+            name: mainGroup.name || `${ASSISTANT_NAME} (Telegram)`,
+            folder: 'main',
+            trigger: `@${ASSISTANT_NAME}`,
+            added_at: new Date().toISOString(),
+            isMain: true,
+            requiresTrigger: false,
+          });
+          logger.info(
+            { jid: mainGroup.jid, name: mainGroup.name },
+            'Auto-registered Telegram main group from TELEGRAM_BOT_TOKEN',
+          );
+        } else {
+          logger.warn(
+            'TELEGRAM_BOT_TOKEN set but no Telegram groups found. Send a message to the bot in a group first.',
+          );
+        }
+      }
+    }
+
+    // If no main group was registered via env vars, log a warning
+    if (Object.keys(registeredGroups).length === 0) {
+      logger.warn(
+        {
+          slackMainChannelId: SLACK_MAIN_CHANNEL_ID,
+          slackBotTokenSet: !!SLACK_BOT_TOKEN,
+          telegramBotTokenSet: !!TELEGRAM_BOT_TOKEN,
+        },
+        'No channels auto-registered. Set SLACK_MAIN_CHANNEL_ID + SLACK_BOT_TOKEN or TELEGRAM_BOT_TOKEN for Railway zero-config deploy.',
+      );
+    }
   }
 
   // Start subsystems (independently of connection handler)
