@@ -1,18 +1,7 @@
-FROM node:22-slim
-
+FROM node:22
 WORKDIR /app
-
-# Copy package files
 COPY package.json ./
-
-# Use npm install (not npm ci) since lockfile may be out of sync
-RUN npm install --ignore-scripts
-
-# Copy source
+RUN npm install
 COPY . .
-
-# Build TypeScript
 RUN npm run build
-
-# Start
 CMD ["npm", "run", "start"]
