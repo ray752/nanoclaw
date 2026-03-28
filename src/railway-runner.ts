@@ -162,6 +162,8 @@ export async function runRailwayAgent(
         NODE_PATH: process.env.NODE_PATH || '',
         TZ: TIMEZONE,
         HOME: claudeDir.replace(/\/.claude$/, ''), // Parent of .claude dir
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+        ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || '',
         NANOCLAW_WORKSPACE_GROUP: groupDir,
         NANOCLAW_WORKSPACE_GLOBAL: globalDir || '',
         NANOCLAW_WORKSPACE_EXTRA: extraDir || '',
