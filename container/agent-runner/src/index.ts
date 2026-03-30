@@ -452,7 +452,12 @@ async function runQuery(
         'TeamCreate', 'TeamDelete', 'SendMessage',
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
-        'mcp__nanoclaw__*'
+        'mcp__nanoclaw__*',
+        'mcp__circleback__*',
+        'mcp__vercel__*',
+        'mcp__supabase__*',
+        'mcp__github__*',
+        'mcp__todoist__*'
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -467,6 +472,34 @@ async function runQuery(
             NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
+        },
+        circleback: {
+          type: 'http' as const,
+          url: 'https://app.circleback.ai/api/mcp',
+        },
+        vercel: {
+          command: 'npx',
+          args: ['-y', 'mcp-vercel@latest'],
+          env: { VERCEL_TOKEN: process.env.VERCEL_TOKEN || '' },
+        },
+        supabase: {
+          command: 'npx',
+          args: ['-y', 'supabase-mcp@latest', 'supabase-mcp-claude'],
+          env: {
+            SUPABASE_URL: process.env.SUPABASE_URL || '',
+            SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
+            SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+          },
+        },
+        github: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-github@latest'],
+          env: { GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN || '' },
+        },
+        todoist: {
+          command: 'npx',
+          args: ['-y', '@doist/todoist-ai', 'mcp'],
+          env: { TODOIST_API_KEY: process.env.TODOIST_API_KEY || '' },
         },
       },
       hooks: {

@@ -337,6 +337,100 @@ Use available_groups.json to find the JID for a group. The folder name must be c
   },
 );
 
+// ---------------------------------------------------------------------------
+// Apify tools
+// ---------------------------------------------------------------------------
+
+function getApifyClient() {
+  // Token is optional — OneCLI gateway injects Authorization header on api.apify.com requests.
+  // If APIFY_API_TOKEN is set (e.g. outside containers), the SDK uses it directly.
+  const token = process.env.APIFY_API_TOKEN || undefined;
+  return import('apify-client').then(({ ApifyClient }) => new ApifyClient({ token }));
+}
+
+server.tool(
+  'apify_run_actor',
+  `Run an Apify actor (scraper / automation) and return its dataset items.
+
+Common actors (use the full ID):
+• apify/web-scraper — generic web scraper with page function
+• apify/cheerio-scraper — fast HTML scraper (no browser)
+• apify/playwright-scraper — full browser scraper
+• apify/google-search-scraper — Google SERP results
+
+Find more at https://apify.com/store. Pass actor input as JSON.`,
+  {
+    actor_id: z.string().describe('Actor ID, e.g. "apify/web-scraper" or "username/actor-name"'),
+    input: z.record(z.string(), z.unknown()).optional().describe('Actor input object (JSON). Varies per actor — check its README.'),
+    max_items: z.number().default(50).describe('Maximum dataset items to return (default 50)'),
+    wait_secs: z.number().default(120).describe('Max seconds to wait for the run to finish (default 120)'),
+  },
+  async (args) => {
+    try {
+      const client = await getApifyClient();
+      const run = await client.actor(args.actor_id).call(args.input ?? {}, { waitSecs: args.wait_secs });
+
+      if (!run) {
+        return { content: [{ type: 'text' as const, text: 'Actor run failed — no run object returned.' }], isError: true };
+      }
+
+      if (run.status !== 'SUCCEEDED') {
+        return {
+          content: [{ type: 'text' as const, text: `Actor run status: ${run.status}. Run ID: ${run.id}` }],
+          isError: run.status === 'FAILED',
+        };
+      }
+
+      const { items } = await client.dataset(run.defaultDatasetId).listItems({ limit: args.max_items });
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: `Run ${run.id} succeeded (${items.length} items).\n\n${JSON.stringify(items, null, 2)}`,
+        }],
+      };
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Apify error: ${err instanceof Error ? err.message : String(err)}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  'apify_get_dataset_items',
+  'Fetch items from an existing Apify dataset by its ID. Useful for retrieving results from a previous run.',
+  {
+    dataset_id: z.string().describe('The dataset ID (from a previous actor run)'),
+    limit: z.number().default(50).describe('Max items to return (default 50)'),
+    offset: z.number().default(0).describe('Number of items to skip (for pagination)'),
+  },
+  async (args) => {
+    try {
+      const client = await getApifyClient();
+      const { items } = await client.dataset(args.dataset_id).listItems({
+        limit: args.limit,
+        offset: args.offset,
+      });
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: items.length > 0
+            ? `${items.length} items:\n\n${JSON.stringify(items, null, 2)}`
+            : 'No items found in dataset.',
+        }],
+      };
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Apify error: ${err instanceof Error ? err.message : String(err)}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
 // Start the stdio transport
 const transport = new StdioServerTransport();
 await server.connect(transport);

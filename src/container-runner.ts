@@ -26,6 +26,7 @@ import {
 } from './container-runtime.js';
 import { OneCLI } from '@onecli-sh/sdk';
 import { validateAdditionalMounts } from './mount-security.js';
+import { readEnvFile } from './env.js';
 import { RegisteredGroup } from './types.js';
 
 const onecli = new OneCLI({ url: ONECLI_URL });
@@ -232,6 +233,27 @@ async function buildContainerArgs(
 
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
+
+  // Pass MCP server credentials so stdio-based MCP servers can authenticate.
+  // OneCLI proxy handles HTTP-level auth separately, but stdio MCP servers
+  // need env vars to start. Read from .env (not in process.env by design).
+  const mcpEnvKeys = [
+    'VERCEL_TOKEN',
+    'SUPABASE_URL',
+    'SUPABASE_ANON_KEY',
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'GITHUB_TOKEN',
+    'REPLICATE_API_TOKEN',
+    'APIFY_API_TOKEN',
+    'BRAVE_API_KEY',
+    'RUNWAY_API_TOKEN',
+    'TODOIST_API_KEY',
+  ];
+  const mcpEnv = readEnvFile(mcpEnvKeys);
+  for (const key of mcpEnvKeys) {
+    const val = process.env[key] || mcpEnv[key];
+    if (val) args.push('-e', `${key}=${val}`);
+  }
 
   // OneCLI gateway handles credential injection — containers never see real secrets.
   // The gateway intercepts HTTPS traffic and injects API keys or OAuth tokens.
