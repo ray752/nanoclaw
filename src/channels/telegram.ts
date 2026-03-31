@@ -191,9 +191,38 @@ export class TelegramChannel implements Channel {
       logger.error({ err: err.message }, 'Telegram bot error');
     });
 
-    // Start polling — returns a Promise that resolves when started.
-    // drop_pending_updates avoids 409 Conflict during Railway deployment rollover
-    // (old and new instances both calling getUpdates simultaneously).
+    // Start polling with auto-restart on failure (e.g. 409 Conflict).
+    // grammY's polling loop dies silently on transport errors; this wrapper
+    // detects that and restarts after a short delay.
+    const startPolling = (isRestart = false) => {
+      this.bot!.start({
+        drop_pending_updates: true,
+        onStart: (botInfo) => {
+          logger.info(
+            { username: botInfo.username, id: botInfo.id },
+            isRestart ? 'Telegram bot reconnected' : 'Telegram bot connected',
+          );
+          if (!isRestart) {
+            console.log(`\n  Telegram bot: @${botInfo.username}`);
+            console.log(
+              `  Send /chatid to the bot to get a chat's registration ID\n`,
+            );
+          }
+        },
+      }).then(() => {
+        // Polling loop ended (not from disconnect()) — restart it
+        if (this.bot) {
+          logger.warn('Telegram polling loop stopped unexpectedly, restarting in 5s');
+          setTimeout(() => startPolling(true), 5000);
+        }
+      }).catch((err) => {
+        logger.error({ err: err instanceof Error ? err.message : String(err) }, 'Telegram polling crashed, restarting in 5s');
+        if (this.bot) {
+          setTimeout(() => startPolling(true), 5000);
+        }
+      });
+    };
+
     return new Promise<void>((resolve) => {
       this.bot!.start({
         drop_pending_updates: true,
@@ -208,6 +237,17 @@ export class TelegramChannel implements Channel {
           );
           resolve();
         },
+      }).then(() => {
+        // Polling ended unexpectedly after initial connect — auto-restart
+        if (this.bot) {
+          logger.warn('Telegram polling loop stopped unexpectedly, restarting in 5s');
+          setTimeout(() => startPolling(true), 5000);
+        }
+      }).catch((err) => {
+        logger.error({ err: err instanceof Error ? err.message : String(err) }, 'Telegram polling crashed, restarting in 5s');
+        if (this.bot) {
+          setTimeout(() => startPolling(true), 5000);
+        }
       });
     });
   }
@@ -262,8 +302,9 @@ export class TelegramChannel implements Channel {
 
   async disconnect(): Promise<void> {
     if (this.bot) {
-      this.bot.stop();
-      this.bot = null;
+      const bot = this.bot;
+      this.bot = null; // Signal auto-restart loop to stop
+      bot.stop();
       logger.info('Telegram bot stopped');
     }
   }
