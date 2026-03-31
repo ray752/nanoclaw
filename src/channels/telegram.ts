@@ -209,18 +209,25 @@ export class TelegramChannel implements Channel {
             );
           }
         },
-      }).then(() => {
-        // Polling loop ended (not from disconnect()) — restart it
-        if (this.bot) {
-          logger.warn('Telegram polling loop stopped unexpectedly, restarting in 5s');
-          setTimeout(() => startPolling(true), 5000);
-        }
-      }).catch((err) => {
-        logger.error({ err: err instanceof Error ? err.message : String(err) }, 'Telegram polling crashed, restarting in 5s');
-        if (this.bot) {
-          setTimeout(() => startPolling(true), 5000);
-        }
-      });
+      })
+        .then(() => {
+          // Polling loop ended (not from disconnect()) — restart it
+          if (this.bot) {
+            logger.warn(
+              'Telegram polling loop stopped unexpectedly, restarting in 5s',
+            );
+            setTimeout(() => startPolling(true), 5000);
+          }
+        })
+        .catch((err) => {
+          logger.error(
+            { err: err instanceof Error ? err.message : String(err) },
+            'Telegram polling crashed, restarting in 5s',
+          );
+          if (this.bot) {
+            setTimeout(() => startPolling(true), 5000);
+          }
+        });
     };
 
     return new Promise<void>((resolve) => {
@@ -237,18 +244,25 @@ export class TelegramChannel implements Channel {
           );
           resolve();
         },
-      }).then(() => {
-        // Polling ended unexpectedly after initial connect — auto-restart
-        if (this.bot) {
-          logger.warn('Telegram polling loop stopped unexpectedly, restarting in 5s');
-          setTimeout(() => startPolling(true), 5000);
-        }
-      }).catch((err) => {
-        logger.error({ err: err instanceof Error ? err.message : String(err) }, 'Telegram polling crashed, restarting in 5s');
-        if (this.bot) {
-          setTimeout(() => startPolling(true), 5000);
-        }
-      });
+      })
+        .then(() => {
+          // Polling ended unexpectedly after initial connect — auto-restart
+          if (this.bot) {
+            logger.warn(
+              'Telegram polling loop stopped unexpectedly, restarting in 5s',
+            );
+            setTimeout(() => startPolling(true), 5000);
+          }
+        })
+        .catch((err) => {
+          logger.error(
+            { err: err instanceof Error ? err.message : String(err) },
+            'Telegram polling crashed, restarting in 5s',
+          );
+          if (this.bot) {
+            setTimeout(() => startPolling(true), 5000);
+          }
+        });
     });
   }
 
